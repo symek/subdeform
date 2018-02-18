@@ -37,7 +37,7 @@ bool create_shape_matrix(const std::string &restfile,
             const UT_Vector3 rest_pos   = rest.getPos3(ptoff);
             const GA_Offset  shape_off  = shape.pointOffset(rest_index);
             const UT_Vector3 shape_pos  = shape.getPos3(shape_off);
-            const UT_Vector3 shape_delta(rest_pos - shape_pos);
+            const UT_Vector3 shape_delta(shape_pos - rest_pos);
             matrix(3*rest_index+0, shapenum) = shape_delta.x();
             matrix(3*rest_index+1, shapenum) = shape_delta.y();
             matrix(3*rest_index+2, shapenum) = shape_delta.z(); 
@@ -79,12 +79,12 @@ int main(int argc, char *argv[])
     }
 
     const std::string matrix_file("../tmp/shapes.matrix");
-    if(!write_matrix(shapes_matrix, matrix_file))
+    if(!write_matrix(shapes_matrix, matrix_file.c_str()))
         return 1;
 
     // check;
     Matrix second_matrix;
-    if(!read_matrix(matrix_file, second_matrix)) {
+    if(!read_matrix(matrix_file.c_str(), second_matrix)) {
         std::cerr << "Can't read matrix" << '\n';
         return 1;
     }
