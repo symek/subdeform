@@ -6,8 +6,10 @@
 #include <Eigen/StdVector>
 #include <GU/GU_Detail.h>
 #include <CMD/CMD_Args.h>
+#include <hboost/program_options.hpp>
 #include "utils.hpp"
 
+namespace po = hboost::program_options;
 
 bool create_shape_matrix(const std::string &restfile, 
     const StringVec &shapefiles, Matrix &matrix)
@@ -50,43 +52,59 @@ bool create_shape_matrix(const std::string &restfile,
 
 int main(int argc, char *argv[])
 {
-    if (argc == 1) {
-        std::cerr << "Usage: \n\t ./subdeform rest.bgeo deform.*.bgeo [deform.matrix]" << '\n';
-        return 1;
-    }
+    try 
+    {
 
-    const std::string restfile(argv[1]);
-    StringVec shapefiles;
-    for(int i=2; i<argc; ++i) {   
-        std::string file(argv[i]);
-        shapefiles.push_back(file);
-    }
+        po::options_description options("Subdeform options.");
+        options.add_options()
+            ("help,h",  "Help")
+            ("rest,r",   po::value<std::string>()->required(), "Rest input file.")
+            ("shapes,s", po::value<StringVec>()->multitoken()->required(), "Input shape files")
+            ("skin,k",   po::value<StringVec>()->multitoken(), "Input skin  files");
 
-    if (shapefiles.size() == 0) {
-        std::cerr << "No shape files found." << '\n';
-        return 1;
-    }
+        po::variables_map result;        
+        po::store(po::parse_command_line(argc, argv, options), result);
+        po::notify(result);
 
-    std::cout << "Using rest file: " <<  restfile << '\n';
-    std::cout << "Using " << shapefiles.size() <<  " shapes: " \
-        << shapefiles[0] << "...\n";
+        if(!result.count("shapes")) {
+            std::cerr << "No shape files found." << '\n';
+            return 1;
+        } 
+        
+        auto & shapefiles = result["shapes"].as<StringVec>();
+        auto & restfile   = result["rest"].as<std::string>();
+        StringVec skinfiles;
+        if(result.count("skin")) {
+            skinfiles = result["skin"].as<StringVec>();
+            std::cout << "Using " << shapefiles.size() <<  " skins: " \
+            << skinfiles[0] << "...\n";
+        }
 
+        std::cout << "Using rest file: " <<  restfile << '\n';
+        std::cout << "Using " << shapefiles.size() <<  " shapes: " \
+            << shapefiles[0] << "...\n";
 
-    Matrix shapes_matrix;
-    if (!create_shape_matrix(restfile, shapefiles, shapes_matrix)) {
-        std::cerr << "Can't create shape matrix." << '\n';
-        return 1;   
-    }
+        Matrix shapes_matrix;
+        if (!create_shape_matrix(restfile, shapefiles, shapes_matrix)) {
+            std::cerr << "Can't create shape matrix." << '\n';
+            return 1;   
+        }
 
-    const std::string matrix_file("../tmp/shapes.matrix");
-    if(!write_matrix(shapes_matrix, matrix_file.c_str()))
-        return 1;
+        const std::string matrix_file("../tmp/shapes.matrix");
+        if(!write_matrix(shapes_matrix, matrix_file.c_str()))
+            return 1;
 
-    // check;
-    Matrix second_matrix;
-    if(!read_matrix(matrix_file.c_str(), second_matrix)) {
-        std::cerr << "Can't read matrix" << '\n';
-        return 1;
+        // check;
+        Matrix second_matrix;
+        if(!read_matrix(matrix_file.c_str(), second_matrix)) {
+            std::cerr << "Can't read matrix" << '\n';
+            return 1;
+        } else {
+            std::cout << "Matrix seems to be fine. " << '\n';   
+        }
+
+    } catch (const std::exception &ex) {
+        std::cerr << ex.what() << '\n';
     }
     
     return 0;
