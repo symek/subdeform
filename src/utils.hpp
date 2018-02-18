@@ -4,10 +4,10 @@ using StringVec = std::vector<std::string>;
 using Matrix    = Eigen::MatrixXd;
 using Vector    = Eigen::VectorXd;
 
-bool write_matrix(const Matrix & matrix, const std::string & filename) {
+bool write_matrix(const Matrix & matrix, const char * filename) {
     const double * data = matrix.data();
     // Eigen::Map<Matrix>(data, matrix.rows(), matrix.cols()) = matrix;
-    FILE *file = fopen(filename.c_str(), "wb");
+    FILE *file = fopen(filename, "wb");
     if (!file) {
         std::cerr << "Can't create matrix file: " << filename << '\n';
         return false;
@@ -25,8 +25,8 @@ bool write_matrix(const Matrix & matrix, const std::string & filename) {
     return true;
 }
 
-bool read_matrix(const std::string & filename, Matrix & matrix) {
-    FILE *file = fopen(filename.c_str(), "rb");
+bool read_matrix(const char * filename, Matrix & matrix) {
+    FILE *file = fopen(filename, "rb");
     if (!file) {
         std::cerr << "Can't open matrix file: " << filename << '\n';
         return false;
