@@ -46,16 +46,21 @@ static PRM_Name names[] = {
     PRM_Name("subspacematrix",   "Subspace file"),
     PRM_Name("deformmode",       "Deform mode"),
     PRM_Name("strength",         "Strength"),
+    PRM_Name("sparse",           "Use sparse matrix"),
 };
 
 PRM_Template
 SOP_Subdeform::myTemplateList[] = {
+    
     PRM_Template(PRM_STRING,    1, &PRMgroupName, 0, &SOP_Node::pointGroupMenu, 0, 0, \
         SOP_Node::getGroupSelectButton(GA_GROUP_POINT)),
-    PRM_Template(PRM_PICFILE,   1, &names[0], 0, 0, 0, 0, &PRM_SpareData::fileChooserModeRead, \
-        0, subspacematrix_help), // subspace matrix file
+
+    PRM_Template(PRM_PICFILE,   1, &names[0], 0, 0, 0, SOP_Subdeform::markDirty, 
+        &PRM_SpareData::fileChooserModeRead, 0, subspacematrix_help), // subspace matrix file
+
     PRM_Template(PRM_ORD,       1, &names[1], 0, &deformMenu, 0, 0, 0, 0, 0),
     PRM_Template(PRM_FLT_LOG,   1, &names[2], PRMoneDefaults, 0, 0, 0, 0, 0, 0),
+    PRM_Template(PRM_TOGGLE,    1, &names[3], PRMzeroDefaults, 0, 0, 0, 0, 0, 0), // sparse
     PRM_Template(),
 };
 
@@ -114,6 +119,7 @@ SOP_Subdeform::cookMySop(OP_Context &context)
     DEFORMMODE(deformmode_str);
     const float strength  = STRENGTH(t);
     const int deform_mode = atoi(deformmode_str.buffer());
+    const int use_sparse  = SPARSE(t);
 
     if (error() >= UT_ERROR_ABORT)
         return error();
@@ -130,13 +136,12 @@ SOP_Subdeform::cookMySop(OP_Context &context)
         m_matrix_file = UT_String(subspace_file.c_str(), true);
         m_needs_init  = false;
         m_qrmatrix    = nullptr;
-        // can I make it sparse?
-        m_diagonal.conservativeResize(m_matrix.rows(), m_matrix.rows());
         m_diagonal = m_matrix * m_matrix.transpose();
-        #ifdef SPARSE
-        S = m_matrix.sparseView();
-        S = S * S.transpose();
-        #endif
+        m_transposed = m_matrix.transpose();
+        if (use_sparse) {
+            S = m_matrix.sparseView();
+            S = S * S.transpose();
+        }
     }
 
     // (A) get weights from orthogonalized shape matrix 
@@ -154,7 +159,7 @@ SOP_Subdeform::cookMySop(OP_Context &context)
         // scalar product of delta and Q's columns:
         // Get weights out of this: 
         if(m_qrmatrix == nullptr) {
-            DEBUG_PRINT("Building new QRMatrix... \n", "");
+            DEBUG_PRINT("Building new QRMatrix... %s\n", "");
             m_qrmatrix = std::move(QRMatrixPtr(new QRMatrix(m_matrix)));
         }
         Matrix weights_mat = m_delta.asDiagonal() * m_qrmatrix->matrixQR();
@@ -165,31 +170,43 @@ SOP_Subdeform::cookMySop(OP_Context &context)
 
         GA_ROHandleV3 rest_h(gdp->findFloatTuple(GA_ATTRIB_POINT, "rest", 3));
         Vector subpos(gdp->getNumPoints()*3);
+
          if(!position_delta(gdp, m_delta)) {
             addWarning(SOP_MESSAGE, "Can't compute delta frame.");
             return error();
         }
         // 
-        #ifdef SPARSE
-        subpos = S * m_delta;
-        #else
-        subpos = m_diagonal * m_delta;
-        #endif
-        {
+        if (use_sparse) {
+            subpos = S * m_delta;
             GA_Offset ptoff;
             GA_FOR_ALL_PTOFF(gdp, ptoff) {
                 const GA_Index ptidx  = gdp->pointIndex(ptoff);
                 const UT_Vector3 old  = gdp->getPos3(ptoff);
                 const UT_Vector3 rest = rest_h.get(ptoff);
                 const UT_Vector3 disp(subpos[3*ptidx+0], 
-                                     subpos[3*ptidx+1], 
-                                     subpos[3*ptidx+2]);
-
-                gdp->setPos3(ptoff, rest + (disp * strength) + (old - rest));
+                                      subpos[3*ptidx+1], 
+                                      subpos[3*ptidx+2]);
+                gdp->setPos3(ptoff, old + disp * strength);
             }
-        } 
 
-
+        } else {
+            subpos =  m_transposed * m_delta;
+            GA_Offset ptoff;
+            GA_FOR_ALL_PTOFF(gdp, ptoff) {
+                const GA_Index ptidx  = gdp->pointIndex(ptoff);
+                const UT_Vector3 old  = gdp->getPos3(ptoff);
+                const UT_Vector3 rest = rest_h.get(ptoff);
+                UT_Vector3 disp(0,0,0);
+                for(int col=0; col<subpos.cols(); ++col) {
+                    const float xd = m_matrix(3*ptidx + 0, col);
+                    const float yd = m_matrix(3*ptidx + 1, col);
+                    const float zd = m_matrix(3*ptidx + 2, col);
+                    const float w  = subpos(col); 
+                    disp += UT_Vector3(xd, yd, zd) * w;               
+                }
+                gdp->setPos3(ptoff, old + disp * strength);
+            }
+        }
     }
 
     

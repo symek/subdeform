@@ -58,7 +58,12 @@ public:
     typedef std::unique_ptr<Eigen::VectorXd> WeightsVector;
     SOP_Subdeform(OP_Network *net, const char *name, OP_Operator *op);
     virtual ~SOP_Subdeform();
-
+    static int markDirty(void *data, int, fpreal, const PRM_Template *) { 
+        SOP_Subdeform *node = static_cast<SOP_Subdeform*>(data);
+        node->m_needs_init = true;
+        return 1;
+    }
+    
     static PRM_Template      myTemplateList[];
     static OP_Node      *myConstructor(OP_Network*, const char *,
                                 OP_Operator *);
@@ -78,6 +83,7 @@ private:
     void    SUBSPACEMATRIX(UT_String &str)    { evalString(str, "subspacematrix", 0, 0); }
     void    DEFORMMODE(UT_String &str)        { evalString(str, "deformmode", 0, 0); }
     fpreal  STRENGTH(fpreal t)                { return evalFloat("strength", 0, t); }
+    int     SPARSE(fpreal t)                  { return evalInt("sparse", 0, t); }
 
 
     /// This is the group of geometry to be manipulated by this SOP and cooked
@@ -85,6 +91,7 @@ private:
     const GA_PointGroup *myGroup;
     Matrix        m_matrix;
     Matrix        m_diagonal;
+    Matrix        m_transposed;
     Eigen::SparseMatrix<double> S;
     DeltaVector   m_delta;
     QRMatrixPtr   m_qrmatrix = nullptr;
