@@ -3,6 +3,7 @@
 
 #include <Eigen/Geometry>
 #include <Eigen/StdVector>
+#include <Eigen/SparseCore>
 
 #include <UT/UT_DSOVersion.h>
 #include <GU/GU_Detail.h>
@@ -104,7 +105,7 @@ SOP_Subdeform::cookMySop(OP_Context &context)
     
     fpreal t = context.getTime();
     duplicatePointSource(0, context);
-    // should we care?
+    // should we care about the cost? (this won't change most of the time)
     m_delta.conservativeResize(gdp->getNumPoints()*3);
    
     /// UI
@@ -117,19 +118,25 @@ SOP_Subdeform::cookMySop(OP_Context &context)
     if (error() >= UT_ERROR_ABORT)
         return error();
 
-    // 
+    // (Re)Init matrices...
+    // TODO: m_neeeds_init set to true on wire change or disabling/enabling node.
     if ((subspace_file.compare(m_matrix_file)) || m_needs_init) {
         
         if(!read_matrix(subspace_file.c_str(), m_matrix)) {
             addError(SOP_MESSAGE, "Failed to load the matrix file.");
             return error();
         }
-        DEBUG_PRINT("New matrix read.", "");
+        DEBUG_PRINT("New matrix read: %s", m_matrix_file.c_str());
         m_matrix_file = UT_String(subspace_file.c_str(), true);
         m_needs_init  = false;
         m_qrmatrix    = nullptr;
+        // can I make it sparse?
         m_diagonal.conservativeResize(m_matrix.rows(), m_matrix.rows());
         m_diagonal = m_matrix * m_matrix.transpose();
+        #ifdef SPARSE
+        S = m_matrix.sparseView();
+        S = S * S.transpose();
+        #endif
     }
 
     // (A) get weights from orthogonalized shape matrix 
@@ -147,7 +154,7 @@ SOP_Subdeform::cookMySop(OP_Context &context)
         // scalar product of delta and Q's columns:
         // Get weights out of this: 
         if(m_qrmatrix == nullptr) {
-            DEBUG_PRINT("Building new QRMatrix.", "");
+            DEBUG_PRINT("Building new QRMatrix... \n", "");
             m_qrmatrix = std::move(QRMatrixPtr(new QRMatrix(m_matrix)));
         }
         Matrix weights_mat = m_delta.asDiagonal() * m_qrmatrix->matrixQR();
@@ -156,27 +163,20 @@ SOP_Subdeform::cookMySop(OP_Context &context)
 
     } else if (deform_mode == deformation_space::PCA) {
 
-        // Vector rest(gdp->getNumPoints()*3);
         GA_ROHandleV3 rest_h(gdp->findFloatTuple(GA_ATTRIB_POINT, "rest", 3));
-        Vector shape(gdp->getNumPoints()*3);
         Vector subpos(gdp->getNumPoints()*3);
-        GA_Offset ptoff;
-        GA_FOR_ALL_PTOFF(gdp, ptoff) {
-            const GA_Index ptidx  = gdp->pointIndex(ptoff);
-            const UT_Vector3 p    = gdp->getPos3(ptoff);
-            const UT_Vector3 rest = rest_h.get(ptoff);
-            shape(3*ptidx + 0) = p.x() - rest.x() ;
-            shape(3*ptidx + 1) = p.y() - rest.y() ;
-            shape(3*ptidx + 2) = p.z() - rest.z() ;
+         if(!position_delta(gdp, m_delta)) {
+            addWarning(SOP_MESSAGE, "Can't compute delta frame.");
+            return error();
         }
-
-        // shape.conservativeResize(m_matrix.cols());
-        subpos = m_diagonal * shape;
-        // std::cout << m_diagonal.rows() << ", " << m_diagonal.cols() << '\n';
-        // std::cout << subpos.rows() << ", " << subpos.cols() << '\n';
-        // std::cout << shape.rows() << ", " << subpos.cols() << '\n';
-
+        // 
+        #ifdef SPARSE
+        subpos = S * m_delta;
+        #else
+        subpos = m_diagonal * m_delta;
+        #endif
         {
+            GA_Offset ptoff;
             GA_FOR_ALL_PTOFF(gdp, ptoff) {
                 const GA_Index ptidx  = gdp->pointIndex(ptoff);
                 const UT_Vector3 old  = gdp->getPos3(ptoff);

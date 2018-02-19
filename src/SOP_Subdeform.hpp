@@ -10,6 +10,8 @@ namespace subdeform {
 #define DEBUG_PRINT(fmt, ...) do {} while (0)
 #endif
 
+//#define SPARSE
+
 enum deformation_space {
     ORTHO,
     PCA,
@@ -83,6 +85,7 @@ private:
     const GA_PointGroup *myGroup;
     Matrix        m_matrix;
     Matrix        m_diagonal;
+    Eigen::SparseMatrix<double> S;
     DeltaVector   m_delta;
     QRMatrixPtr   m_qrmatrix = nullptr;
     DeltaVector   m_weights;
