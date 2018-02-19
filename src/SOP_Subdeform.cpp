@@ -44,6 +44,7 @@ static PRM_ChoiceList  deformMenu(PRM_CHOICELIST_SINGLE, deformChoices);
 static PRM_Name names[] = {
     PRM_Name("subspacematrix",   "Subspace file"),
     PRM_Name("deformmode",       "Deform mode"),
+    PRM_Name("strength",         "Strength"),
 };
 
 PRM_Template
@@ -53,6 +54,7 @@ SOP_Subdeform::myTemplateList[] = {
     PRM_Template(PRM_PICFILE,   1, &names[0], 0, 0, 0, 0, &PRM_SpareData::fileChooserModeRead, \
         0, subspacematrix_help), // subspace matrix file
     PRM_Template(PRM_ORD,       1, &names[1], 0, &deformMenu, 0, 0, 0, 0, 0),
+    PRM_Template(PRM_FLT_LOG,   1, &names[2], PRMoneDefaults, 0, 0, 0, 0, 0, 0),
     PRM_Template(),
 };
 
@@ -100,81 +102,95 @@ SOP_Subdeform::cookMySop(OP_Context &context)
     if (inputs.lock(context) >= UT_ERROR_ABORT)
         return error();
     
-    // fpreal t = context.getTime();
+    fpreal t = context.getTime();
     duplicatePointSource(0, context);
+    // should we care?
+    m_delta.conservativeResize(gdp->getNumPoints()*3);
    
     /// UI
     UT_String subspace_file, deformmode_str;
     SUBSPACEMATRIX(subspace_file);
     DEFORMMODE(deformmode_str);
+    const float strength  = STRENGTH(t);
     const int deform_mode = atoi(deformmode_str.buffer());
 
     if (error() >= UT_ERROR_ABORT)
         return error();
 
     // 
-    if ((subspace_file != m_matrix_file) || m_needs_init) {
-        if((strcmp(subspace_file.fileExtension(), ".matrix"))) {
-            addWarning(SOP_MESSAGE, "Expects file with .matrix extension"); 
-            return error();
-        }
+    if ((subspace_file.compare(m_matrix_file)) || m_needs_init) {
         
         if(!read_matrix(subspace_file.c_str(), m_matrix)) {
             addError(SOP_MESSAGE, "Failed to load the matrix file.");
             return error();
         }
-        m_matrix_file = subspace_file;
+        DEBUG_PRINT("New matrix read.", "");
+        m_matrix_file = UT_String(subspace_file.c_str(), true);
         m_needs_init  = false;
+        m_qrmatrix    = nullptr;
+        m_diagonal.conservativeResize(m_matrix.rows(), m_matrix.rows());
+        m_diagonal = m_matrix * m_matrix.transpose();
     }
-
 
     // (A) get weights from orthogonalized shape matrix 
     if (deform_mode == deformation_space::ORTHO) {
-        Eigen::VectorXd delta(gdp->getNumPoints()*3);
-        Eigen::HouseholderQR<Matrix> qrMatrix(m_matrix);
-        GA_ROHandleV3 rest_h(gdp->findFloatTuple(GA_ATTRIB_POINT, "rest", 3));
-        if (rest_h.isInvalid()) {
+        m_weights.conservativeResize(m_matrix.cols());
+        GA_Attribute * rest = gdp->findFloatTuple(GA_ATTRIB_POINT, "rest", 3);
+        if (!rest) {
             addWarning(SOP_MESSAGE, "We need rest attribute to proceed."); 
             return error();
         }
-
-        {
-            GA_Offset ptoff;
-            GA_FOR_ALL_PTOFF(gdp, ptoff) {
-                const GA_Index ptidx  = gdp->pointIndex(ptoff);
-                const UT_Vector3 pos  = gdp->getPos3(ptoff);
-                const UT_Vector3 rest = rest_h.get(ptoff);
-                delta(3*ptidx + 0) = pos.x() - rest.x();
-                delta(3*ptidx + 1) = pos.y() - rest.y();
-                delta(3*ptidx + 2) = pos.z() - rest.z();
-            }
+        if(!position_delta(gdp, m_delta)) {
+            addWarning(SOP_MESSAGE, "Can't compute delta frame.");
+            return error();
         }
         // scalar product of delta and Q's columns:
         // Get weights out of this: 
-        Eigen::MatrixXd weights_mat = delta.asDiagonal() * qrMatrix.matrixQR();
-        Eigen::VectorXd weights(weights_mat.colwise().sum());
+        if(m_qrmatrix == nullptr) {
+            DEBUG_PRINT("Building new QRMatrix.", "");
+            m_qrmatrix = std::move(QRMatrixPtr(new QRMatrix(m_matrix)));
+        }
+        Matrix weights_mat = m_delta.asDiagonal() * m_qrmatrix->matrixQR();
+        m_weights = std::move(weights_mat.colwise().sum());
+        apply_displacement(m_matrix, m_weights, strength, gdp);
 
+    } else if (deform_mode == deformation_space::PCA) {
+
+        // Vector rest(gdp->getNumPoints()*3);
+        GA_ROHandleV3 rest_h(gdp->findFloatTuple(GA_ATTRIB_POINT, "rest", 3));
+        Vector shape(gdp->getNumPoints()*3);
+        Vector subpos(gdp->getNumPoints()*3);
         GA_Offset ptoff;
         GA_FOR_ALL_PTOFF(gdp, ptoff) {
             const GA_Index ptidx  = gdp->pointIndex(ptoff);
-            UT_Vector3 disp(0,0,0);
-            for(int col=0; col<m_matrix.cols(); ++col) {
-                const float xd = m_matrix(3*ptidx + 0, col);
-                const float yd = m_matrix(3*ptidx + 1, col);
-                const float zd = m_matrix(3*ptidx + 2, col);
-                const float w  = weights(col); // TODO Remove magic number. 
-                // const float cw = SYSclamp(w, 0.0f, 1.f); // ugly
-                disp += UT_Vector3(xd, yd, zd) * w;
-            }
-            
-            // const UT_Vector3 pos = UT_Vector3(delta[0], delta[1], delta[2]) - gdp->getPos3(ptoff);
+            const UT_Vector3 p    = gdp->getPos3(ptoff);
             const UT_Vector3 rest = rest_h.get(ptoff);
-            gdp->setPos3(ptoff, rest + disp);
+            shape(3*ptidx + 0) = p.x() - rest.x() ;
+            shape(3*ptidx + 1) = p.y() - rest.y() ;
+            shape(3*ptidx + 2) = p.z() - rest.z() ;
         }
+
+        // shape.conservativeResize(m_matrix.cols());
+        subpos = m_diagonal * shape;
+        // std::cout << m_diagonal.rows() << ", " << m_diagonal.cols() << '\n';
+        // std::cout << subpos.rows() << ", " << subpos.cols() << '\n';
+        // std::cout << shape.rows() << ", " << subpos.cols() << '\n';
+
+        {
+            GA_FOR_ALL_PTOFF(gdp, ptoff) {
+                const GA_Index ptidx  = gdp->pointIndex(ptoff);
+                const UT_Vector3 old  = gdp->getPos3(ptoff);
+                const UT_Vector3 rest = rest_h.get(ptoff);
+                const UT_Vector3 disp(subpos[3*ptidx+0], 
+                                     subpos[3*ptidx+1], 
+                                     subpos[3*ptidx+2]);
+
+                gdp->setPos3(ptoff, rest + (disp * strength) + (old - rest));
+            }
+        } 
+
+
     }
-
-
-
 
     
     // If we've modified P, and we're managing our own data IDs,

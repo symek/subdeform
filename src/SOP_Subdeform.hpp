@@ -15,10 +15,45 @@ enum deformation_space {
     PCA,
 };
 
+inline bool position_delta(const GU_Detail * gdp, Vector & delta) {
+    GA_ROHandleV3 rest_h(gdp->findFloatTuple(GA_ATTRIB_POINT, "rest", 3));
+    GA_Offset ptoff;
+    GA_FOR_ALL_PTOFF(gdp, ptoff) {
+        const GA_Index ptidx  = gdp->pointIndex(ptoff);
+        const UT_Vector3 pos  = gdp->getPos3(ptoff);
+        const UT_Vector3 rest = rest_h.get(ptoff);
+        delta(3*ptidx + 0) = pos.x() - rest.x();
+        delta(3*ptidx + 1) = pos.y() - rest.y();
+        delta(3*ptidx + 2) = pos.z() - rest.z();
+    } 
+    return true;   
+}
+
+inline void apply_displacement(const Matrix & matrix, 
+    const Vector & weights, const float strength, GU_Detail * gdp) {
+    GA_Offset ptoff;
+    GA_FOR_ALL_PTOFF(gdp, ptoff) {
+        const GA_Index ptidx  = gdp->pointIndex(ptoff);
+        UT_Vector3 disp(0,0,0);
+        for(int col=0; col<matrix.cols(); ++col) {
+            const float xd = matrix(3*ptidx + 0, col);
+            const float yd = matrix(3*ptidx + 1, col);
+            const float zd = matrix(3*ptidx + 2, col);
+            const float w  = weights(col) / 10.0f; 
+            disp += UT_Vector3(xd, yd, zd) * w ;
+        }
+        const UT_Vector3 rest = gdp->getPos3(ptoff);
+        gdp->setPos3(ptoff, rest - (disp * strength));
+    }
+}
 
 class SOP_Subdeform : public SOP_Node
 {
 public:
+    typedef Eigen::VectorXd              DeltaVector;
+    typedef Eigen::HouseholderQR<Matrix> QRMatrix;
+    typedef std::unique_ptr<QRMatrix>    QRMatrixPtr;
+    typedef std::unique_ptr<Eigen::VectorXd> WeightsVector;
     SOP_Subdeform(OP_Network *net, const char *name, OP_Operator *op);
     virtual ~SOP_Subdeform();
 
@@ -40,14 +75,19 @@ private:
     void    getGroups(UT_String &str)         { evalString(str, "group", 0, 0); }
     void    SUBSPACEMATRIX(UT_String &str)    { evalString(str, "subspacematrix", 0, 0); }
     void    DEFORMMODE(UT_String &str)        { evalString(str, "deformmode", 0, 0); }
+    fpreal  STRENGTH(fpreal t)                { return evalFloat("strength", 0, t); }
 
 
     /// This is the group of geometry to be manipulated by this SOP and cooked
     /// by the method "cookInputGroups".
     const GA_PointGroup *myGroup;
-    Matrix    m_matrix;
-    UT_String m_matrix_file;
-    bool      m_needs_init = true;
+    Matrix        m_matrix;
+    Matrix        m_diagonal;
+    DeltaVector   m_delta;
+    QRMatrixPtr   m_qrmatrix = nullptr;
+    DeltaVector   m_weights;
+    UT_String     m_matrix_file;
+    bool          m_needs_init = true;
 
 };
 
