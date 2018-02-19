@@ -17,6 +17,8 @@ void orthogonalize_matrix(Matrix & matrix, int c=0) {
         double norm2 = matrix.col(x).norm();
         if(norm2 >= 1e-6) {
             matrix.col(x) *= 1.0 / norm2;
+        } else {
+            matrix.col(x) *= 0.0f;
         }
     }
 }
