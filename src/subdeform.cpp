@@ -111,23 +111,23 @@ int main(int argc, char *argv[])
     {
         po::options_description options("Subdeform options.");
         options.add_options()
-            ("rest,r",   po::value<std::string>()->required(),  "Rest input file.")
-            ("output,o", po::value<std::string>()->required(),  "Output file (.matrix).")
-            ("shapes,s", po::value<StringVec>()->multitoken()->required(), "Input shape files")
-            ("skin,k",   po::value<StringVec>()->multitoken(),  "Input skin files")
-            ("ortho,t",  po::value<bool>(),                     "Orthogonalize PCA")
-            ("var,v",    po::value<double>(),                   "PCA Variance");
+            ("rest,r",   po::value<std::string>()->required(),             "Rest input file.")
+            ("output,o", po::value<std::string>()->required(),             "Output file (.matrix).")
+            ("shape,s",  po::value<StringVec>()->multitoken()->required(), "Input shape files")
+            ("skin,k",   po::value<StringVec>()->multitoken(),             "Input skin files")
+            ("norm,n",   po::value<bool>()->default_value(false),          "Orthonormalize PCA")
+            ("var,v",    po::value<double>(),                              "PCA Variance");
 
         po::variables_map result;        
         po::store(po::parse_command_line(argc, argv, options), result);
         po::notify(result);
 
-        if(!result.count("shapes")) {
+        if(!result.count("shape")) {
             std::cerr << "No shape files found." << '\n';
             return 1;
         } 
         
-        auto & shapefiles  = result["shapes"].as<StringVec>();
+        auto & shapefiles  = result["shape"].as<StringVec>();
         auto & restfile    = result["rest"].as<std::string>();
         auto & matrix_file = result["output"].as<std::string>();
         StringVec            skinfiles;
@@ -160,13 +160,12 @@ int main(int argc, char *argv[])
                 return 1;   
             }
         }
-
         /// Save
         if (result.count("var")) {
             Matrix pca_matrix;
-            const double variance      = result["var"].as<double>();
-            const bool   orthogonalize = result["ortho"].as<bool>();
-            if(!computePCA(shapes_matrix, pca_matrix, variance, orthogonalize)) {
+            const double variance       = result["var"].as<double>();
+            const bool   orthonormalize = result["norm"].as<bool>(); 
+            if(!computePCA(shapes_matrix, pca_matrix, variance, orthonormalize)) {
                 std::cerr << "Can't compute PCA matrix." << '\n';
                 return 1;
             }
@@ -182,15 +181,13 @@ int main(int argc, char *argv[])
                 return 1;
             }
         }
-
-
         // check;
         Matrix second_matrix;
         if(!read_matrix(matrix_file.c_str(), second_matrix)) {
-            std::cerr << "Can't read matrix" << '\n';
+            std::cerr << "Can't read matrix" << matrix_file << '\n';
             return 1;
         } else {
-            std::cout << "Matrix seems to be fine. " << '\n';   
+            std::cout << "Matrix seems to be fine... quiting now. " << '\n';   
         }
 
     } catch (const std::exception &ex) {
