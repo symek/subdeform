@@ -109,13 +109,14 @@ int main(int argc, char *argv[])
 {
     try 
     {
-
         po::options_description options("Subdeform options.");
         options.add_options()
-            ("help,h",  "Help")
-            ("rest,r",   po::value<std::string>()->required(), "Rest input file.")
+            ("rest,r",   po::value<std::string>()->required(),  "Rest input file.")
+            ("output,o", po::value<std::string>()->required(),  "Output file (.matrix).")
             ("shapes,s", po::value<StringVec>()->multitoken()->required(), "Input shape files")
-            ("skin,k",   po::value<StringVec>()->multitoken(), "Input skin  files");
+            ("skin,k",   po::value<StringVec>()->multitoken(),  "Input skin files")
+            ("ortho,t",  po::value<bool>(),                     "Orthogonalize PCA")
+            ("var,v",    po::value<double>(),                   "PCA Variance");
 
         po::variables_map result;        
         po::store(po::parse_command_line(argc, argv, options), result);
@@ -126,9 +127,10 @@ int main(int argc, char *argv[])
             return 1;
         } 
         
-        auto & shapefiles = result["shapes"].as<StringVec>();
-        auto & restfile   = result["rest"].as<std::string>();
-        StringVec skinfiles;
+        auto & shapefiles  = result["shapes"].as<StringVec>();
+        auto & restfile    = result["rest"].as<std::string>();
+        auto & matrix_file = result["output"].as<std::string>();
+        StringVec            skinfiles;
 
         if(result.count("skin")) {
             skinfiles = result["skin"].as<StringVec>();
@@ -136,7 +138,7 @@ int main(int argc, char *argv[])
             << skinfiles[0] << "...\n";
         }
 
-        if (skinfiles.size() == 0 && shapefiles.size() != 0) {
+        if (skinfiles.size() != 0 && (shapefiles.size() != skinfiles.size())) {
             std::cerr << "Shapes and skin files don't match." << '\n';
             return 1;
         }
@@ -145,6 +147,7 @@ int main(int argc, char *argv[])
         std::cout << "Using " << shapefiles.size() <<  " shapes: " \
             << shapefiles[0] << "...\n";
 
+        /// Create matrix from skin and deforemed sequence
         Matrix shapes_matrix;
         if (skinfiles.size() != 0) {
             if (!create_shape_matrix(restfile, skinfiles, shapefiles, shapes_matrix)) {
@@ -158,9 +161,28 @@ int main(int argc, char *argv[])
             }
         }
 
-        const std::string matrix_file("../tmp/shapes.matrix");
-        if(!write_matrix(shapes_matrix, matrix_file.c_str()))
-            return 1;
+        /// Save
+        if (result.count("var")) {
+            Matrix pca_matrix;
+            const double variance      = result["var"].as<double>();
+            const bool   orthogonalize = result["ortho"].as<bool>();
+            if(!computePCA(shapes_matrix, pca_matrix, variance, orthogonalize)) {
+                std::cerr << "Can't compute PCA matrix." << '\n';
+                return 1;
+            }
+
+            if(!write_matrix(pca_matrix, matrix_file.c_str())) {
+                std::cerr << "Can't write matrix to file: " << matrix_file << '\n';
+                return 1;
+            }
+
+        } else {
+            if(!write_matrix(shapes_matrix, matrix_file.c_str())) {
+                std::cerr << "Can't write matrix to file: " << matrix_file << '\n';
+                return 1;
+            }
+        }
+
 
         // check;
         Matrix second_matrix;
