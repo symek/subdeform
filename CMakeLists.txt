@@ -32,6 +32,8 @@ add_executable( ${executable_name}
     src/utils.hpp
     src/subdeform.cpp
 )
+
+
 add_library( ${library_name} SHARED
     src/utils.hpp
     src/SOP_Subdeform.hpp
@@ -48,3 +50,13 @@ target_link_libraries( ${executable_name} Houdini )
 target_link_libraries( ${executable_name} hboost_program_options)
 # Configure several common target properties, such as its output directory.
 houdini_configure_target( ${executable_name} )
+
+
+
+add_executable( playground 
+    src/test.cpp
+)
+# Link against the Houdini libraries, and add required include directories and compile definitions.
+target_link_libraries( playground Houdini )
+# Configure several common target properties, such as its output directory.
+houdini_configure_target( playground )
