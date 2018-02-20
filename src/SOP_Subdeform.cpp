@@ -182,7 +182,6 @@ SOP_Subdeform::cookMySop(OP_Context &context)
             GA_FOR_ALL_PTOFF(gdp, ptoff) {
                 const GA_Index ptidx  = gdp->pointIndex(ptoff);
                 const UT_Vector3 old  = gdp->getPos3(ptoff);
-                const UT_Vector3 rest = rest_h.get(ptoff);
                 const UT_Vector3 disp(subpos[3*ptidx+0], 
                                       subpos[3*ptidx+1], 
                                       subpos[3*ptidx+2]);
@@ -190,23 +189,14 @@ SOP_Subdeform::cookMySop(OP_Context &context)
             }
 
         } else {
-            subpos =  m_transposed * m_delta;
-            // this should allow to skip iteration over col in m_matrix bellow,
-            // but it doesn't...
-            // m_delta = subpos.transpose() * m_matrix;
+            // NOTE: those parenthiss are importants
+            m_delta  = m_matrix * (m_transposed * m_delta);
             GA_Offset ptoff;
             GA_FOR_ALL_PTOFF(gdp, ptoff) {
                 const GA_Index ptidx  = gdp->pointIndex(ptoff);
                 const UT_Vector3 old  = gdp->getPos3(ptoff);
-                const UT_Vector3 rest = rest_h.get(ptoff);
-                UT_Vector3 disp(0,0,0);
-                for(int col=0; col<subpos.cols(); ++col) {
-                    const float xd = m_matrix(3*ptidx + 0, col);
-                    const float yd = m_matrix(3*ptidx + 1, col);
-                    const float zd = m_matrix(3*ptidx + 2, col);
-                    const float w  = subpos(col); 
-                    disp += UT_Vector3(xd, yd, zd) * w;               
-                }
+                const Vector & v      = m_delta.segment<3>(ptidx*3);
+                const UT_Vector3 disp(v.data());
                 gdp->setPos3(ptoff, old + disp * strength);
             }
         }
