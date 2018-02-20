@@ -125,7 +125,7 @@ SOP_Subdeform::cookMySop(OP_Context &context)
     if ((subspace_file.compare(m_matrix_file)) || m_needs_init) {
         
         if(!read_matrix(subspace_file.c_str(), m_matrix)) {
-            addError(SOP_MESSAGE, "Failed to load the matrix file.");
+            addWarning(SOP_MESSAGE, "Failed to load the matrix file. Ignoring it.");
             return error();
         }
         DEBUG_PRINT("New matrix read: %s\n", m_matrix_file.c_str());
