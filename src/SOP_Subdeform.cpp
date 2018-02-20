@@ -110,7 +110,12 @@ SOP_Subdeform::cookMySop(OP_Context &context)
     duplicatePointSource(0, context);
     // should we care about the cost? (this won't change most of the time)
     m_delta.conservativeResize(gdp->getNumPoints()*3);
-   
+
+    if (m_needs_init == false && (m_matrix.rows() / 3 != gdp->getNumPoints())) {
+       addWarning(SOP_MESSAGE, "Matrix points' count differs from input geo. Ignoring it.");
+        return error();
+    }
+
     /// UI
     UT_String subspace_file, deformmode_str;
     SUBSPACEMATRIX(subspace_file);
@@ -122,45 +127,48 @@ SOP_Subdeform::cookMySop(OP_Context &context)
         return error();
 
     // (Re)Init matrices...
-    if ((subspace_file.compare(m_matrix_file)) || m_needs_init) {
-        
+    if (m_needs_init) {
         if(!read_matrix(subspace_file.c_str(), m_matrix)) {
             addWarning(SOP_MESSAGE, "Failed to load the matrix file. Ignoring it.");
             return error();
         }
-        DEBUG_PRINT("New matrix read: %s\n", m_matrix_file.c_str());
-        m_matrix_file = UT_String(subspace_file.c_str(), true);
+        if (m_matrix.rows() / 3 != gdp->getNumPoints()) {
+            addWarning(SOP_MESSAGE, "Matrix points count differs from input geo. Ignoring it.");
+            return error();
+        }
+        auto && message = std::ostringstream();
+        message << "Matrix points: " << m_matrix.rows() << ", shapes: " << m_matrix.cols();
+        addMessage(SOP_MESSAGE, message.str().c_str());
+        DEBUG_PRINT("New matrix read: %s\n", subspace_file.c_str());
         m_transposed = m_matrix.transpose();
         m_qrmatrix    = nullptr;
         m_needs_init  = false;
     }
 
+    GA_Attribute * rest = gdp->findFloatTuple(GA_ATTRIB_POINT, "rest", 3);
+    if (!rest) {
+        addWarning(SOP_MESSAGE, "We need rest attribute to proceed."); 
+        return error();
+    }
+
     // (A) get weights from orthogonalized shape matrix 
+    // TODO: Just testing old approach (to be removed)
     if (deform_mode == deformation_space::ORTHO) {
         m_weights.conservativeResize(m_matrix.cols());
-        GA_Attribute * rest = gdp->findFloatTuple(GA_ATTRIB_POINT, "rest", 3);
-        if (!rest) {
-            addWarning(SOP_MESSAGE, "We need rest attribute to proceed."); 
-            return error();
-        }
         if(!position_delta(gdp, m_delta)) {
             addWarning(SOP_MESSAGE, "Can't compute delta frame.");
             return error();
         }
-        // scalar product of delta and Q's columns:
-        // Get weights out of this: 
         if(m_qrmatrix == nullptr) {
             DEBUG_PRINT("Building new QRMatrix... %s\n", "");
             m_qrmatrix = std::move(QRMatrixPtr(new QRMatrix(m_matrix)));
         }
+        // scalar product of delta and Q's columns:
         Matrix weights_mat = m_delta.asDiagonal() * m_qrmatrix->matrixQR();
         m_weights = std::move(weights_mat.colwise().sum());
         apply_displacement(m_matrix, m_weights, strength, gdp);
 
     } else if (deform_mode == deformation_space::PCA) {
-
-        GA_ROHandleV3 rest_h(gdp->findFloatTuple(GA_ATTRIB_POINT, "rest", 3));
-        Vector subpos(gdp->getNumPoints()*3);
 
          if(!position_delta(gdp, m_delta)) {
             addWarning(SOP_MESSAGE, "Can't compute delta frame.");

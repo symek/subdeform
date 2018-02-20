@@ -93,7 +93,6 @@ private:
     DeltaVector   m_delta;
     QRMatrixPtr   m_qrmatrix = nullptr;
     DeltaVector   m_weights;
-    UT_String     m_matrix_file;
     bool          m_needs_init = true;
 
 };
