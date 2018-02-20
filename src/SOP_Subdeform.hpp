@@ -58,6 +58,7 @@ public:
     typedef std::unique_ptr<Eigen::VectorXd> WeightsVector;
     SOP_Subdeform(OP_Network *net, const char *name, OP_Operator *op);
     virtual ~SOP_Subdeform();
+    /// Mark internal storage needs to be recreated (m_matrix, ...)
     static int markDirty(void *data, int, fpreal, const PRM_Template *) { 
         SOP_Subdeform *node = static_cast<SOP_Subdeform*>(data);
         node->m_needs_init = true;
