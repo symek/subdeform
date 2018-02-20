@@ -1,17 +1,15 @@
-#include <Eigen/Geometry>
-#include <Eigen/StdVector>
 #include <iostream>
 #include <GU/GU_Detail.h>
-
-// using Matrix    = Eigen::MatrixXd;
-// using Vector    = Eigen::VectorXd;
+#include "math.hpp"
 
 int main()
 {
-    Eigen::MatrixXd m(3,3);
+    constexpr int rows = 10;
+    constexpr int cols = 3;
+    Eigen::MatrixXd m(rows, cols);
     double * data = m.data();
-    for (int i=0; i< 3*3; ++i)
-        data[i] = i;
+    for (int i=0; i< rows*cols; ++i)
+        data[i] = (double)i;
 
     // const Eigen::VectorXd & d = m.row(0);
     // UT_Vector3 v(d.data());
@@ -20,11 +18,11 @@ int main()
     // std::cout << v.x() << v.y() << v.z() << '\n';
 
 
-    Eigen::VectorXd d(3);
-    d.segment<3>(0) = m.row(1);
+    Eigen::VectorXd d(cols);
+    d.segment<cols>(0) = m.row(1);
     std::cout << d << '\n';
 
-    Eigen::VectorXd r = d.transpose() * m;
+    Eigen::VectorXd r =  m * d;
     std::cout << r << '\n';    
 
 

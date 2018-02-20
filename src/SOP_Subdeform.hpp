@@ -1,7 +1,6 @@
 #pragma once 
 #include <SOP/SOP_Node.h>
 
-
 namespace subdeform {
 
 #ifndef NDEBUG

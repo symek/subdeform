@@ -1,10 +1,6 @@
 #include <unordered_map>
 #include <memory>
 
-#include <Eigen/Geometry>
-#include <Eigen/StdVector>
-#include <Eigen/SparseCore>
-
 #include <UT/UT_DSOVersion.h>
 #include <GU/GU_Detail.h>
 #include <OP/OP_Operator.h>
@@ -13,7 +9,7 @@
 #include <PRM/PRM_Include.h>
 #include <PRM/PRM_SpareData.h>
 
-#include "utils.hpp"
+#include "math.hpp"
 #include "SOP_Subdeform.hpp"
 
 using namespace subdeform;

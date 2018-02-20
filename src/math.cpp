@@ -1,11 +1,9 @@
-#pragma once
+#include "math.hpp"
 
-using StringVec = std::vector<std::string>;
-using Matrix    = Eigen::MatrixXd;
-using Vector    = Eigen::VectorXd;
+namespace subdeform {
 
-// Should we just use EIGEN::QRMatrix?
-void orthogonalize_matrix(Matrix & matrix, int c=0) {
+
+void orthogonalize_matrix(Matrix & matrix, int c) {
     if(c >= matrix.cols())
       return;
     for (int x = c; x < matrix.cols(); ++x) {
@@ -23,9 +21,8 @@ void orthogonalize_matrix(Matrix & matrix, int c=0) {
     }
 }
 
-
 bool computePCA(Matrix & matrix, Matrix & pcamatrix, 
-    double variance, bool shift=false, bool orthogonalize=false) {
+    double variance, bool shift, bool orthogonalize) {
 
     Vector eigenvalues;
     const int rows = matrix.rows();
@@ -64,7 +61,7 @@ bool computePCA(Matrix & matrix, Matrix & pcamatrix,
     }
 
     if (orthogonalize)
-        orthogonalize_matrix(pcamatrix);
+        orthogonalize_matrix(pcamatrix, 0);
 
     return true;
 }
@@ -72,10 +69,8 @@ bool computePCA(Matrix & matrix, Matrix & pcamatrix,
 
 bool write_matrix(const Matrix & matrix, const char * filename) {
     const double * data = matrix.data();
-    // Eigen::Map<Matrix>(data, matrix.rows(), matrix.cols()) = matrix;
     FILE *file = fopen(filename, "wb");
     if (!file) {
-        std::cerr << "Can't create matrix file: " << filename << '\n';
         return false;
     }
     const int rows = matrix.rows();
@@ -84,7 +79,6 @@ bool write_matrix(const Matrix & matrix, const char * filename) {
     fwrite((void*)&cols, sizeof(int), 1, file);
     fwrite((void*)data, sizeof(double), rows * cols, file);
     if (ferror(file)) {
-        std::cerr << "Can't write to a file: " << filename << '\n';
         return false;
     }
     fclose(file);
@@ -94,7 +88,6 @@ bool write_matrix(const Matrix & matrix, const char * filename) {
 bool read_matrix(const char * filename, Matrix & matrix) {
     FILE *file = fopen(filename, "rb");
     if (!file) {
-        std::cerr << "Can't open matrix file: " << filename << '\n';
         return false;
     }
     int rows = 0; 
@@ -105,9 +98,9 @@ bool read_matrix(const char * filename, Matrix & matrix) {
     double * data = matrix.data();
     fread((void*)data, sizeof(double), rows * cols, file);
     if (ferror(file)) {
-        std::cerr << "Can't read from a file: " << filename << '\n';
         return false;
     }
     fclose(file);
     return true;
 }
+} // end of subdeform namespace

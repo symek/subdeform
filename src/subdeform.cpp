@@ -2,14 +2,12 @@
 #include <fstream>
 #include <vector>
 #include <string>
-#include <Eigen/Geometry>
-#include <Eigen/StdVector>
 #include <GU/GU_Detail.h>
-#include <CMD/CMD_Args.h>
 #include <hboost/program_options.hpp>
-#include "utils.hpp"
+#include "math.hpp"
 
 namespace po = hboost::program_options;
+using namespace subdeform;
 
 bool create_shape_matrix(const std::string & restfile, const StringVec &skinfiles,
     const StringVec &shapefiles, Matrix &matrix)
