@@ -191,6 +191,9 @@ SOP_Subdeform::cookMySop(OP_Context &context)
 
         } else {
             subpos =  m_transposed * m_delta;
+            // this should allow to skip iteration over col in m_matrix bellow,
+            // but it doesn't...
+            // m_delta = subpos.transpose() * m_matrix;
             GA_Offset ptoff;
             GA_FOR_ALL_PTOFF(gdp, ptoff) {
                 const GA_Index ptidx  = gdp->pointIndex(ptoff);
