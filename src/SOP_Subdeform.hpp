@@ -84,16 +84,12 @@ private:
     void    SUBSPACEMATRIX(UT_String &str)    { evalString(str, "subspacematrix", 0, 0); }
     void    DEFORMMODE(UT_String &str)        { evalString(str, "deformmode", 0, 0); }
     fpreal  STRENGTH(fpreal t)                { return evalFloat("strength", 0, t); }
-    int     SPARSE(fpreal t)                  { return evalInt("sparse", 0, t); }
-
 
     /// This is the group of geometry to be manipulated by this SOP and cooked
     /// by the method "cookInputGroups".
     const GA_PointGroup *myGroup;
     Matrix        m_matrix;
-    Matrix        m_diagonal;
     Matrix        m_transposed;
-    Eigen::SparseMatrix<double> S;
     DeltaVector   m_delta;
     QRMatrixPtr   m_qrmatrix = nullptr;
     DeltaVector   m_weights;

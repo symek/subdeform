@@ -46,7 +46,6 @@ static PRM_Name names[] = {
     PRM_Name("subspacematrix",   "Subspace file"),
     PRM_Name("deformmode",       "Deform mode"),
     PRM_Name("strength",         "Strength"),
-    PRM_Name("sparse",           "Use sparse matrix"),
 };
 
 PRM_Template
@@ -60,7 +59,6 @@ SOP_Subdeform::myTemplateList[] = {
 
     PRM_Template(PRM_ORD,       1, &names[1], 0, &deformMenu, 0, 0, 0, 0, 0),
     PRM_Template(PRM_FLT_LOG,   1, &names[2], PRMoneDefaults, 0, 0, 0, 0, 0, 0),
-    PRM_Template(PRM_TOGGLE,    1, &names[3], PRMzeroDefaults, 0, 0, 0, 0, 0, 0), // sparse
     PRM_Template(),
 };
 
@@ -119,29 +117,22 @@ SOP_Subdeform::cookMySop(OP_Context &context)
     DEFORMMODE(deformmode_str);
     const float strength  = STRENGTH(t);
     const int deform_mode = atoi(deformmode_str.buffer());
-    const int use_sparse  = SPARSE(t);
 
     if (error() >= UT_ERROR_ABORT)
         return error();
 
     // (Re)Init matrices...
-    // TODO: m_neeeds_init set to true on wire change or disabling/enabling node.
     if ((subspace_file.compare(m_matrix_file)) || m_needs_init) {
         
         if(!read_matrix(subspace_file.c_str(), m_matrix)) {
             addError(SOP_MESSAGE, "Failed to load the matrix file.");
             return error();
         }
-        DEBUG_PRINT("New matrix read: %s", m_matrix_file.c_str());
+        DEBUG_PRINT("New matrix read: %s\n", m_matrix_file.c_str());
         m_matrix_file = UT_String(subspace_file.c_str(), true);
-        m_needs_init  = false;
-        m_qrmatrix    = nullptr;
-        m_diagonal = m_matrix * m_matrix.transpose();
         m_transposed = m_matrix.transpose();
-        if (use_sparse) {
-            S = m_matrix.sparseView();
-            S = S * S.transpose();
-        }
+        m_qrmatrix    = nullptr;
+        m_needs_init  = false;
     }
 
     // (A) get weights from orthogonalized shape matrix 
@@ -176,33 +167,19 @@ SOP_Subdeform::cookMySop(OP_Context &context)
             return error();
         }
         // 
-        if (use_sparse) {
-            subpos = S * m_delta;
-            GA_Offset ptoff;
-            GA_FOR_ALL_PTOFF(gdp, ptoff) {
-                const GA_Index ptidx  = gdp->pointIndex(ptoff);
-                const UT_Vector3 old  = gdp->getPos3(ptoff);
-                const UT_Vector3 disp(subpos[3*ptidx+0], 
-                                      subpos[3*ptidx+1], 
-                                      subpos[3*ptidx+2]);
-                gdp->setPos3(ptoff, old + disp * strength);
-            }
-
-        } else {
-            // NOTE: those parenthiss are importants
-            m_delta  = m_matrix * (m_transposed * m_delta);
-            GA_Offset ptoff;
-            GA_FOR_ALL_PTOFF(gdp, ptoff) {
-                const GA_Index ptidx  = gdp->pointIndex(ptoff);
-                const UT_Vector3 old  = gdp->getPos3(ptoff);
-                const Vector & v      = m_delta.segment<3>(ptidx*3);
-                const UT_Vector3 disp(v.data());
-                gdp->setPos3(ptoff, old + disp * strength);
-            }
+        // NOTE: those parenthiss are importants
+        m_delta  = m_matrix * (m_transposed * m_delta);
+        GA_Offset ptoff;
+        GA_FOR_ALL_PTOFF(gdp, ptoff) {
+            const GA_Index ptidx  = gdp->pointIndex(ptoff);
+            const UT_Vector3 old  = gdp->getPos3(ptoff);
+            const Vector & v      = m_delta.segment<3>(ptidx*3);
+            const UT_Vector3 disp(v.data());
+            gdp->setPos3(ptoff, old + disp * strength);
         }
+    
     }
 
-    
     // If we've modified P, and we're managing our own data IDs,
     // we must bump the data ID for P.
     if (!myGroup || !myGroup->isEmpty())
