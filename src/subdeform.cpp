@@ -180,19 +180,25 @@ int main(int argc, char *argv[])
 {
     try 
     {
-        po::options_description options("Subdeform options.");
+        po::options_description options("subdeform options:");
         options.add_options()
+            ("help,h",                                                     "Help.") 
             ("rest,r",   po::value<std::string>()->required(),             "Rest input file.")
             ("output,o", po::value<std::string>()->required(),             "Output file (.matrix).")
             ("shape,s",  po::value<StringVec>()->multitoken()->required(), "Input shape files")
             ("skin,k",   po::value<StringVec>()->multitoken(),             "Input skin files")
-            ("norm,n",   po::value<bool>()->default_value(false),          "Orthonormalize PCA")
-            ("var,v",    po::value<double>(),                              "PCA Variance")
-            ("psd,p",    po::value<bool>()->default_value(false),           \
-                "Compute pose space deformation in case tangents vectors are presnet.");
+            ("var,v",    po::value<double>(),                              "PCA Variance. If omitted, PCA won't be performed.")
+            ("norm,n",   po::bool_switch()->default_value(true),             "Orthonormalize PCA (on by default).")
+            ("psd,p",    po::bool_switch()->default_value(false),           \
+                "Compute pose space deformation in case tangents vectors are presnet. (default false)");
 
         po::variables_map result;        
         po::store(po::parse_command_line(argc, argv, options), result);
+
+        if (result.count("help") || argc == 1) {
+            std::cout << options << '\n';
+        }
+
         po::notify(result);
 
         if(!result.count("shape")) {
