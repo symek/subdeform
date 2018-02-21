@@ -9,55 +9,128 @@
 namespace po = hboost::program_options;
 using namespace subdeform;
 
+
+inline void compute_rotation(UT_Vector3 & rest_tanu ) {
+
+}
+
+bool compute_psd(const GU_Detail & rest, const GU_Detail & shape, \
+    const GU_Detail & skin, const int shape_index, Matrix & matrix)
+{
+    GA_ROHandleV3 rest_tu_h(rest.findFloatTuple(GA_ATTRIB_POINT, "tangentu", 3));
+    GA_ROHandleV3 rest_tv_h(rest.findFloatTuple(GA_ATTRIB_POINT, "tangentv", 3));
+    GA_ROHandleV3 skin_tu_h(skin.findFloatTuple(GA_ATTRIB_POINT, "tangentu", 3));
+    GA_ROHandleV3 skin_tv_h(skin.findFloatTuple(GA_ATTRIB_POINT, "tangentv", 3)); 
+
+    GA_Offset ptoff;
+    GA_FOR_ALL_PTOFF(&rest, ptoff) {
+        const GA_Index   rest_index = rest.pointIndex(ptoff);
+        const UT_Vector3 rest_pos   = rest.getPos3(ptoff);
+        UT_Vector3 rest_tu          = rest_tu_h.get(ptoff);
+        UT_Vector3 rest_tv          = rest_tv_h.get(ptoff);
+
+        const GA_Offset  skin_off   = skin.pointOffset(rest_index);
+        const UT_Vector3 skin_pos   = skin.getPos3(skin_off);
+        UT_Vector3 skin_tu          = skin_tu_h.get(skin_off);
+        UT_Vector3 skin_tv          = skin_tv_h.get(skin_off);
+
+        UT_Matrix3D m1, m2, m3;
+        const int r1 = m1.dihedral(skin_tu, rest_tu);
+        const int r2 = m2.dihedral(skin_tv, rest_tv);
+        m3 = m1 * m2;
+
+        const GA_Offset  shape_off  = shape.pointOffset(rest_index);
+        const UT_Vector3 shape_pos  = shape.getPos3(shape_off);
+
+        UT_Vector3 shape_delta(shape_pos - skin_pos);
+        shape_delta *= m3;
+
+        matrix(3*rest_index+0, shape_index) = shape_delta.x();
+        matrix(3*rest_index+1, shape_index) = shape_delta.y();
+        matrix(3*rest_index+2, shape_index) = shape_delta.z(); 
+    }
+    return true;
+}
+
+bool compute_delta(const GU_Detail & rest, const GU_Detail & shape, \
+    const GU_Detail & skin, const int shape_index, Matrix & matrix)
+{
+    GA_Offset ptoff;
+    GA_FOR_ALL_PTOFF(&rest, ptoff) {
+        const GA_Index   rest_index = rest.pointIndex(ptoff);
+        const GA_Offset  skin_off   = skin.pointOffset(rest_index);
+        const UT_Vector3 skin_pos   = skin.getPos3(skin_off);
+        const GA_Offset  shape_off  = shape.pointOffset(rest_index);
+        const UT_Vector3 shape_pos  = shape.getPos3(shape_off);
+        const UT_Vector3 shape_delta(shape_pos - skin_pos);
+        matrix(3*rest_index+0, shape_index) = shape_delta.x();
+        matrix(3*rest_index+1, shape_index) = shape_delta.y();
+        matrix(3*rest_index+2, shape_index) = shape_delta.z(); 
+    }
+    return true;
+}
+
 bool create_shape_matrix(const std::string & restfile, const StringVec &skinfiles,
-    const StringVec &shapefiles, Matrix &matrix)
+    const StringVec &shapefiles, const bool psd, Matrix &matrix)
 {
     GU_Detail rest;
     if(!rest.load(restfile.c_str()).success()) {
-        std::cerr << "Can't open rest file " << restfile << '\n';
+        std::cerr << "Can't open rest file: " << restfile << '\n';
         return false;
+    } else {
+        std::cout << "Loading rest file: " << restfile << '\n';
     }
 
     const int npoints = rest.getNumPoints();
     matrix.conservativeResize(npoints*3, shapefiles.size());
-    GA_Offset ptoff;
     int shapenum = 0;
-    GU_Detail shape;
-    GU_Detail skin;
+    GU_Detail shape_geo;
+    GU_Detail skin_geo;
+
     StringVec::const_iterator it;
     for (it=shapefiles.begin(); it!= shapefiles.end(); ++it, ++shapenum) {
-        auto & file = *it;
-        if(!shape.load(file.c_str()).success()) {
-            std::cerr << "Can't open shape file, ignoring it: " << file << '\n';
-            // shapenum++;
+        auto & shape_file = *it;
+        if(!shape_geo.load(shape_file.c_str()).success()) {
+            std::cerr << "Can't open shape file, ignoring it: " << shape_file << '\n';
             continue;
+        } else {
+            std::cout << "Loading shape file: " << shape_file << '\n';
         }
         auto & skinfile = skinfiles.at(shapenum); 
-        if(!skin.load(skinfile.c_str()).success()) {
+        if(!skin_geo.load(skinfile.c_str()).success()) {
             std::cerr << "Can't open skin file, ignoring it: " << skinfile << '\n';
-            // shapenum++;
+            continue;
+        } else {
+             std::cout << "Loading skin file: " << skinfile << '\n';
+        }
+
+        if(npoints != shape_geo.getNumPoints() || npoints != skin_geo.getNumPoints()) {
+            std::cerr << "Points doesn't match, ignoring these files: " << shape_file << ", " << skinfile << '\n';
             continue;
         }
 
-        if(npoints != shape.getNumPoints() || npoints != skin.getNumPoints()) {
-            std::cerr << "Point count doesn't match, ignoring these files: " << file << ": " << skinfile<< '\n';
-            // shapenum++;
-            continue;
+        // Tangents are on place
+        if (rest.findFloatTuple(GA_ATTRIB_POINT, "tangentu", 3)     && 
+            rest.findFloatTuple(GA_ATTRIB_POINT, "tangentv", 3)     && 
+            skin_geo.findFloatTuple(GA_ATTRIB_POINT, "tangentu", 3) && 
+            skin_geo.findFloatTuple(GA_ATTRIB_POINT, "tangentv", 3) && psd) {
+
+            if(compute_psd(rest, shape_geo, skin_geo, shapenum, matrix)) {
+               std::cout << "Computed pose space deformation #: " << shapenum + 1 << '\n'; 
+            } else {
+                std::cerr << "Can't compute pose space deformation for: " << shape_file << '\n';
+            }
+        // Proceed in case of lack of tangents: TODO: make them by yourself
+        } else {
+            if(compute_delta(rest, shape_geo, skin_geo, shapenum, matrix)) {
+            std::cerr << "No tangents found, proceeding without them... " << '\n';
+               std::cout << "Computed delta #: " << shapenum + 1 << '\n'; 
+            } else {
+                std::cerr << "Can't compute delta for: " << shape_file << '\n';
+            }
         }
 
-        GA_FOR_ALL_PTOFF(&rest, ptoff) {
-            const GA_Index   rest_index = rest.pointIndex(ptoff);
-            // const UT_Vector3 rest_pos   = rest.getPos3(ptoff);
-            const GA_Offset  skin_off   = skin.pointOffset(rest_index);
-            const UT_Vector3 skin_pos   = skin.getPos3(skin_off);
-            const GA_Offset  shape_off  = shape.pointOffset(rest_index);
-            const UT_Vector3 shape_pos  = shape.getPos3(shape_off);
-            const UT_Vector3 shape_delta(shape_pos - skin_pos);
-            matrix(3*rest_index+0, shapenum) = shape_delta.x();
-            matrix(3*rest_index+1, shapenum) = shape_delta.y();
-            matrix(3*rest_index+2, shapenum) = shape_delta.z(); 
-        }
-        // shapenum++;
+
     }
 
     return true;
@@ -114,7 +187,9 @@ int main(int argc, char *argv[])
             ("shape,s",  po::value<StringVec>()->multitoken()->required(), "Input shape files")
             ("skin,k",   po::value<StringVec>()->multitoken(),             "Input skin files")
             ("norm,n",   po::value<bool>()->default_value(false),          "Orthonormalize PCA")
-            ("var,v",    po::value<double>(),                              "PCA Variance");
+            ("var,v",    po::value<double>(),                              "PCA Variance")
+            ("psd,p",    po::value<bool>()->default_value(false),           \
+                "Compute pose space deformation in case tangents vectors are presnet.");
 
         po::variables_map result;        
         po::store(po::parse_command_line(argc, argv, options), result);
@@ -146,9 +221,10 @@ int main(int argc, char *argv[])
             << shapefiles[0] << "...\n";
 
         /// Create matrix from skin and deforemed sequence
+        const bool psd = result["psd"].as<bool>();
         Matrix shapes_matrix;
         if (skinfiles.size() != 0) {
-            if (!create_shape_matrix(restfile, skinfiles, shapefiles, shapes_matrix)) {
+            if (!create_shape_matrix(restfile, skinfiles, shapefiles, psd,  shapes_matrix)) {
                 std::cerr << "Can't create shape matrix." << '\n';
                 return 1;  
             }
@@ -163,9 +239,12 @@ int main(int argc, char *argv[])
             Matrix pca_matrix;
             const double variance       = result["var"].as<double>();
             const bool   orthonormalize = result["norm"].as<bool>(); 
+            std::cout << "Computing PCA... " << std::flush; 
             if(!computePCA(shapes_matrix, pca_matrix, variance, orthonormalize)) {
                 std::cerr << "Can't compute PCA matrix." << '\n';
                 return 1;
+            } else {
+                std::cout << "done"  << '\n';
             }
 
             if(!write_matrix(pca_matrix, matrix_file.c_str())) {
@@ -185,7 +264,10 @@ int main(int argc, char *argv[])
             std::cerr << "Can't read matrix" << matrix_file << '\n';
             return 1;
         } else {
-            std::cout << "Matrix seems to be fine... quiting now. " << '\n';   
+            std::cout << "Matrix seems to be fine... " << '\n';
+            std::cout << "Points: " << second_matrix.rows() / 3 << '\n';
+            std::cout << "Shapes: " << second_matrix.cols() << '\n';
+            std::cout << "Size  : " << second_matrix.rows() * second_matrix.cols() * sizeof(double) / 1024 << "KB\n";  
         }
 
     } catch (const std::exception &ex) {
