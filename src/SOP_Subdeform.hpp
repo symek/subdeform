@@ -40,7 +40,7 @@ inline void apply_displacement(const Matrix & matrix,
             const float xd = matrix(3*ptidx + 0, col);
             const float yd = matrix(3*ptidx + 1, col);
             const float zd = matrix(3*ptidx + 2, col);
-            const float w  = weights(col) / 10.0f; 
+            const float w  = weights(col); 
             disp += UT_Vector3(xd, yd, zd) * w ;
         }
         const UT_Vector3 rest = gdp->getPos3(ptoff);
