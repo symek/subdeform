@@ -20,34 +20,41 @@ bool compute_psd(const GU_Detail & rest, const GU_Detail & shape, \
     GA_ROHandleV3 rest_tu_h(rest.findFloatTuple(GA_ATTRIB_POINT, "tangentu", 3));
     GA_ROHandleV3 rest_tv_h(rest.findFloatTuple(GA_ATTRIB_POINT, "tangentv", 3));
     GA_ROHandleV3 skin_tu_h(skin.findFloatTuple(GA_ATTRIB_POINT, "tangentu", 3));
-    GA_ROHandleV3 skin_tv_h(skin.findFloatTuple(GA_ATTRIB_POINT, "tangentv", 3)); 
+    GA_ROHandleV3 skin_tv_h(skin.findFloatTuple(GA_ATTRIB_POINT, "tangentv", 3));
+    // This shouldn't happen but anyway...
+    if (rest_tu_h.isInvalid() || rest_tv_h.isInvalid() || 
+        skin_tu_h.isInvalid() || skin_tv_h.isInvalid()) {
+        return false;
+    }
 
     GA_Offset ptoff;
+    UT_Matrix3D m1, m2, m3;
     GA_FOR_ALL_PTOFF(&rest, ptoff) {
         const GA_Index   rest_index = rest.pointIndex(ptoff);
-        const UT_Vector3 rest_pos   = rest.getPos3(ptoff);
+        //const UT_Vector3 rest_pos   = rest.getPos3(ptoff);
         UT_Vector3 rest_tu          = rest_tu_h.get(ptoff);
         UT_Vector3 rest_tv          = rest_tv_h.get(ptoff);
-
         const GA_Offset  skin_off   = skin.pointOffset(rest_index);
-        const UT_Vector3 skin_pos   = skin.getPos3(skin_off);
-        UT_Vector3 skin_tu          = skin_tu_h.get(skin_off);
-        UT_Vector3 skin_tv          = skin_tv_h.get(skin_off);
-
-        UT_Matrix3D m1, m2, m3;
-        const int r1 = m1.dihedral(skin_tu, rest_tu);
-        const int r2 = m2.dihedral(skin_tv, rest_tv);
-        m3 = m1 * m2;
-
         const GA_Offset  shape_off  = shape.pointOffset(rest_index);
-        const UT_Vector3 shape_pos  = shape.getPos3(shape_off);
 
-        UT_Vector3 shape_delta(shape_pos - skin_pos);
-        shape_delta *= m3;
-
-        matrix(3*rest_index+0, shape_index) = shape_delta.x();
-        matrix(3*rest_index+1, shape_index) = shape_delta.y();
-        matrix(3*rest_index+2, shape_index) = shape_delta.z(); 
+        if (GAisValid(skin_off) && GAisValid(shape_off)) {
+            const UT_Vector3 skin_pos  = skin.getPos3(skin_off);
+            const UT_Vector3 shape_pos = shape.getPos3(shape_off);
+            UT_Vector3 skin_tu         = skin_tu_h.get(skin_off);
+            UT_Vector3 skin_tv         = skin_tv_h.get(skin_off);
+            UT_Vector3 shape_delta(shape_pos - skin_pos);
+            m3.identity();
+            if (m1.dihedral(skin_tu, rest_tu) && \
+                m2.dihedral(skin_tv, rest_tv)) {
+                m3 = m1 * m2;
+            }
+            shape_delta *= m3;
+            matrix(3*rest_index+0, shape_index) = shape_delta.x();
+            matrix(3*rest_index+1, shape_index) = shape_delta.y();
+            matrix(3*rest_index+2, shape_index) = shape_delta.z();
+        } else {
+            return false;
+        }
     }
     return true;
 }
@@ -59,13 +66,18 @@ bool compute_delta(const GU_Detail & rest, const GU_Detail & shape, \
     GA_FOR_ALL_PTOFF(&rest, ptoff) {
         const GA_Index   rest_index = rest.pointIndex(ptoff);
         const GA_Offset  skin_off   = skin.pointOffset(rest_index);
-        const UT_Vector3 skin_pos   = skin.getPos3(skin_off);
         const GA_Offset  shape_off  = shape.pointOffset(rest_index);
-        const UT_Vector3 shape_pos  = shape.getPos3(shape_off);
-        const UT_Vector3 shape_delta(shape_pos - skin_pos);
-        matrix(3*rest_index+0, shape_index) = shape_delta.x();
-        matrix(3*rest_index+1, shape_index) = shape_delta.y();
-        matrix(3*rest_index+2, shape_index) = shape_delta.z(); 
+        //
+        if (GAisValid(skin_off) && GAisValid(shape_off)) {
+            const UT_Vector3 skin_pos   = skin.getPos3(skin_off);
+            const UT_Vector3 shape_pos  = shape.getPos3(shape_off);
+            const UT_Vector3 shape_delta(shape_pos - skin_pos);
+            matrix(3*rest_index+0, shape_index) = shape_delta.x();
+            matrix(3*rest_index+1, shape_index) = shape_delta.y();
+            matrix(3*rest_index+2, shape_index) = shape_delta.z(); 
+        } else {
+            return false;
+        }
     }
     return true;
 }
