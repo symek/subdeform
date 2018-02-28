@@ -192,23 +192,24 @@ int main(int argc, char *argv[])
 {
     try 
     {
-        po::options_description options("subdeform options:");
+        po::options_description options("subdeform options");
         options.add_options()
-            ("help,h",                                                     "Help.") 
-            ("rest,r",   po::value<std::string>()->required(),             "Rest input file.")
-            ("output,o", po::value<std::string>()->required(),             "Output file (.matrix).")
-            ("shape,s",  po::value<StringVec>()->multitoken()->required(), "Input shape files")
-            ("skin,k",   po::value<StringVec>()->multitoken(),             "Input skin files")
-            ("var,v",    po::value<double>(),                              "PCA Variance. If omitted, PCA won't be performed.")
-            ("norm,n",   po::bool_switch()->default_value(true),             "Orthonormalize PCA (on by default).")
+            ("rest,r",   po::value<std::string>()->required(),             "Rest input file   (.bgeo)")
+            ("shape,s",  po::value<StringVec>()->multitoken()->required(), "Input shape files (*.bgeo)")
+            ("skin,k",   po::value<StringVec>()->multitoken(),             "Input skin files  (*.bgeo)")
+            ("output,o", po::value<std::string>()->required(),             "Output file       (*.matrix)")
+            ("var,v",    po::value<double>(),                              "PCA Variance (if omitted, PCA won't be performed)")
+            ("norm,n",   po::bool_switch()->default_value(false),             "Orthonormalize PCA")
             ("psd,p",    po::bool_switch()->default_value(false),           \
-                "Compute pose space deformation in case tangents vectors are presnet. (default false)");
+                "Compute pose space deformation (requires tangents vectors)")
+            ("help,h",                                                     "Prints this screen.");
 
         po::variables_map result;        
         po::store(po::parse_command_line(argc, argv, options), result);
 
         if (result.count("help") || argc == 1) {
             std::cout << options << '\n';
+            return 0;
         }
 
         po::notify(result);
